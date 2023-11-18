@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 
-ROOT="$HOME/.local/share/symega"
+ROOT="$HOME/.local/share/megasync"
 
 if ! test -d "$ROOT"; then
   mkdir -p "$ROOT"
@@ -11,6 +11,7 @@ fi
 TEST_CHECKSUM_DIR="$1"
 HASH_FILE="$2"
 REMOTE_DIRECTORY="$3"
+REMOTE_NAME="$4"
 
 HASH_FILE_PATH="$ROOT/$HASH_FILE"
 
@@ -56,7 +57,7 @@ exists "$HASH_CHECKER" || {
 }
 
 exists rclone || {
-  echo "Install rclone and configure mega."
+  echo "Install rclone and configure at least one remote location."
   failure
 }
 
@@ -74,6 +75,10 @@ if test -z "$HASH_FILE"; then
 fi
 
 if test -z "$REMOTE_DIRECTORY"; then
+  echo "$USAGE"; failure
+fi
+
+if test -z "$REMOTE_NAME"; then
   echo "$USAGE"; failure
 fi
 
@@ -121,6 +126,6 @@ fi
 
 write_hash_to_file "$hashed_dir" "$HASH_FILE_PATH"
 
-rclone copy "$TEST_CHECKSUM_DIR" "mega:$REMOTE_DIRECTORY" || failure
+rclone copy "$TEST_CHECKSUM_DIR" "$REMOTE_NAME:$REMOTE_DIRECTORY" || failure
 
 success
