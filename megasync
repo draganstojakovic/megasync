@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+
+
+ROOT="$HOME/.local/share/symega"
+
+if ! test -d "$ROOT"; then
+  mkdir -p "$ROOT"
+fi
+
+# Commandline arguments
+TEST_CHECKSUM_DIR="$1"
+HASH_FILE="$2"
+REMOTE_DIRECTORY="$3"
+
+HASH_FILE_PATH="$ROOT/$HASH_FILE"
+
+# Program
+HASH_CHECKER=checksumdir
+HASH_CHECKER_URL=https://pypi.org/project/checksumdir/
+
+
+# Usage help text
+USAGE=$(cat <<-END
+
+Usage: symega <DIRECTORY> <HASH_FILENAME> <REMOTE_DIRECTORY>
+
+DIRECTORY: The directory to verify against the MD5 hash.
+HASH_FILENAME: Unique filename containing the stored hash.
+REMOTE_DIRECTORY: The designated folder name within your MEGA account.
+END
+)
+
+success()
+{
+  exit 0
+}
+
+failure()
+{
+  exit 1
+}
+
+exists()
+{
+  if command -v "$1" &> /dev/null; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+exists "$HASH_CHECKER" || {
+  echo "Missing $HASH_CHECKER";
+  echo "Install: $HASH_CHECKER_URL";
+  failure
+}
+
+exists rclone || {
+  echo "Install rclone and configure mega."
+  failure
+}
+
+if test -z "$TEST_CHECKSUM_DIR"; then
+  echo "$USAGE"; failure
+fi
+
+if ! test -d "$TEST_CHECKSUM_DIR"; then
+  echo "The directory to verify against the MD5 hash does not exist."
+  failure
+fi
+
+if test -z "$HASH_FILE"; then
+  echo "$USAGE"; failure
+fi
+
+if test -z "$REMOTE_DIRECTORY"; then
+  echo "$USAGE"; failure
+fi
+
+file_exists()
+{
+  local file="$1"
+
+  if test -f "$file"; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+file_get_contents()
+{
+  local file_path="$1"
+
+  cat "$file_path" 
+}
+
+write_hash_to_file()
+{
+  local hash="$1"
+  local file="$2"
+  echo "$hash" > "$file"
+}
+
+hash_dir()
+{
+  "$HASH_CHECKER" "$TEST_CHECKSUM_DIR"
+}
+
+if ! file_exists "$HASH_FILE_PATH"; then
+  touch "$HASH_FILE_PATH"
+fi
+
+hashed_dir=$(hash_dir)
+old_hash=$(file_get_contents "$HASH_FILE_PATH")
+
+if [[ "$hashed_dir" == "$old_hash" ]]; then
+  # Since hash did not change that means files in the TEST_CHECKSUM_DIR directory did not change so exiting here, no need to sync
+  success
+fi
+
+write_hash_to_file "$hashed_dir" "$HASH_FILE_PATH"
+
+rclone copy "$TEST_CHECKSUM_DIR" "mega:$REMOTE_DIRECTORY" || failure
+
+success
