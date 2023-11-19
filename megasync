@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+# shellcheck disable=SC2120,SC2119
 
 ROOT="$HOME/.local/share/megasync"
 
@@ -8,12 +8,12 @@ if ! test -d "$ROOT"; then
 fi
 
 # Commandline arguments
-TEST_CHECKSUM_DIR="$1"
-HASH_FILE="$2"
+REMOTE_NAME="$1"
+TEST_CHECKSUM_DIR="$2"
 REMOTE_DIRECTORY="$3"
-REMOTE_NAME="$4"
 
-HASH_FILE_PATH="$ROOT/$HASH_FILE"
+HASH_FILE_NAME=$(basename "$TEST_CHECKSUM_DIR")
+HASH_FILE_PATH="$ROOT/$HASH_FILE_NAME"
 
 # Program
 HASH_CHECKER=checksumdir
@@ -23,21 +23,29 @@ HASH_CHECKER_URL=https://pypi.org/project/checksumdir/
 # Usage help text
 USAGE=$(cat <<-END
 
-Usage: symega <DIRECTORY> <HASH_FILENAME> <REMOTE_DIRECTORY>
+Usage: megasync <REMOTE_NAME> <LOCAL_DIRECTORY> <REMOTE_DIRECTORY>
 
-DIRECTORY: The directory to verify against the MD5 hash.
-HASH_FILENAME: Unique filename containing the stored hash.
+REMOTE_NAME: Name of the configured remote.
+LOCAL_DIRECTORY: The directory to verify against the MD5 hash.
 REMOTE_DIRECTORY: The designated folder name within your MEGA account.
 END
 )
 
-success()
+exit_success()
 {
+  if test -n "$1"; then
+    echo "$1"
+  fi
+
   exit 0
 }
 
-failure()
+exit_failure()
 {
+  if test -n "$1"; then
+    echo "$1"
+  fi
+
   exit 1
 }
 
@@ -50,55 +58,24 @@ exists()
   fi
 }
 
-exists "$HASH_CHECKER" || {
-  echo "Missing $HASH_CHECKER";
-  echo "Install: $HASH_CHECKER_URL";
-  failure
-}
-
-exists rclone || {
-  echo "Install rclone and configure at least one remote location."
-  failure
-}
+exists "$HASH_CHECKER" || exit_failure "Missing $HASH_CHECKER. Install: $HASH_CHECKER_URL"
+exists rclone || exit_failure "Install rclone and configure at least one remote location."
 
 if test -z "$TEST_CHECKSUM_DIR"; then
-  echo "$USAGE"; failure
+  exit_failure "$USAGE"
 fi
 
 if ! test -d "$TEST_CHECKSUM_DIR"; then
-  echo "The directory to verify against the MD5 hash does not exist."
-  failure
-fi
-
-if test -z "$HASH_FILE"; then
-  echo "$USAGE"; failure
+  exit_failure "The directory to verify against the MD5 hash does not exist."
 fi
 
 if test -z "$REMOTE_DIRECTORY"; then
-  echo "$USAGE"; failure
+  exit_failure "$USAGE"
 fi
 
 if test -z "$REMOTE_NAME"; then
-  echo "$USAGE"; failure
+  exit_failure "$USAGE"
 fi
-
-file_exists()
-{
-  local file="$1"
-
-  if test -f "$file"; then
-    return 0
-  else
-    return 1
-  fi
-}
-
-file_get_contents()
-{
-  local file_path="$1"
-
-  cat "$file_path" 
-}
 
 write_hash_to_file()
 {
@@ -112,20 +89,20 @@ hash_dir()
   "$HASH_CHECKER" "$TEST_CHECKSUM_DIR"
 }
 
-if ! file_exists "$HASH_FILE_PATH"; then
+if ! test -f "$HASH_FILE_PATH"; then
   touch "$HASH_FILE_PATH"
 fi
 
 hashed_dir=$(hash_dir)
-old_hash=$(file_get_contents "$HASH_FILE_PATH")
+old_hash=$(cat "$HASH_FILE_PATH")
 
 if [[ "$hashed_dir" == "$old_hash" ]]; then
   # Since hash did not change that means files in the TEST_CHECKSUM_DIR directory did not change so exiting here, no need to sync
-  success
+  exit_success
 fi
 
 write_hash_to_file "$hashed_dir" "$HASH_FILE_PATH"
 
-rclone copy "$TEST_CHECKSUM_DIR" "$REMOTE_NAME:$REMOTE_DIRECTORY" || failure
+rclone sync "$TEST_CHECKSUM_DIR" "$REMOTE_NAME:$REMOTE_DIRECTORY" || exit_failure "Failed syncing to remote: $REMOTE_NAME"
 
-success
+exit_success
